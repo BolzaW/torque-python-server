@@ -345,14 +345,12 @@ MAPPINGS = {
 # Extra information about each ID
 metadata = {}
 
-
-
 # Load in config information
 influx_conf = {}
 dir_path = os.path.dirname(os.path.realpath(__file__))
-with open('{}/influx.conf'.format(dir_path)) as f:
-    for l in f:
-        fields = l.split('=')
+with open('{}/influx.conf'.format(dir_path)) as file:
+    for line in file:
+        fields = line.split('=')
         if len(fields) == 2:
             influx_conf[fields[0].strip()] = fields[1].strip()
 
@@ -364,7 +362,6 @@ inf_client = influxdb.InfluxDBClient(influx_conf['host'],
                                      influx_conf['database'])
 
 
-
 class MyHandler(BaseHTTPRequestHandler):
 
     def do_GET(self):
@@ -373,29 +370,26 @@ class MyHandler(BaseHTTPRequestHandler):
 
         # Create the structure we send to influx
         measurement = ''
-        t = None
         fields = {}
         tags = {}
 
         # Parse for tags
-        pyt = datetime.datetime.fromtimestamp(float(params['time'][0])/1000)
+        pyt = datetime.datetime.fromtimestamp(float(params['time'][0]) / 1000)
         t = arrow.get(pyt, 'US/Eastern')
         tags['version'] = int(params['v'][0])
         tags['device_id'] = params['id'][0]
         device_id = tags['device_id']
 
-        # Make sure there is room for metadata
-        if not device_id in metadata:
-            metadata[device_id] = {}
+        metadata[device_id] = {}
 
         # Append additional tags
-        for k,v in metadata[device_id].items():
+        for k, v in metadata[device_id].items():
             tags[k] = v
 
         # Check if this is a metadata message full of descriptions of the
         # PIDs.
         user_message = False
-        for k,v in params.items():
+        for k, v in params.items():
             if k.startswith('userFullName'):
                 user_message = True
                 break
@@ -403,37 +397,27 @@ class MyHandler(BaseHTTPRequestHandler):
         # Check if this is just units
         unit_message = False
         if not user_message:
-            for k,v in params.items():
+            for k, v in params.items():
                 if k.startswith('defaultUnit'):
                     unit_message = True
                     break
 
-
-
         if user_message:
             # Try to use this to fill in anything we don't yet have.
-            for k,v in params.items():
+            for k, v in params.items():
                 if k.startswith('userFullName'):
                     pid = 'k' + k[12:]
                     fullname = v[0].strip()
 
                     # Check for weird symbols from the bolt ev PID list
                     if fullname[0] == '!' or fullname[0] == '*' \
-                       or fullname[0] == '?' or fullname[0] == '+':
-                       fullname = fullname[1:]
-
-
-
-                    # Check to see if this is useful (i.e. we don't have
-                    # this mapping already).
-                    if not pid in MAPPINGS:
-                        MAPPINGS[pid] = fullname
-
+                            or fullname[0] == '?' or fullname[0] == '+':
+                        fullname = fullname[1:]
+                    MAPPINGS[pid] = fullname
 
         elif unit_message:
             # Just want to skip this message
             pass
-
 
         elif 'notice' in params:
             # Handle a notification type message
@@ -449,7 +433,7 @@ class MyHandler(BaseHTTPRequestHandler):
         else:
             # Handle a normal data packet
             measurement = 'torquepro'
-            for k,v in params.items():
+            for k, v in params.items():
                 if k == 'eml' or k == 'time' or k == 'session' or k == 'v' or k == 'id':
                     # ignore email address and other already used fields
                     continue
@@ -465,14 +449,12 @@ class MyHandler(BaseHTTPRequestHandler):
                     else:
                         fields[k] = float(v[0])
 
-
         print(t)
         print(fields)
         print(tags)
 
         # Only publish if we have a valid measurement
         if measurement != '':
-
             points = [
                 {
                     'measurement': measurement,
@@ -483,14 +465,13 @@ class MyHandler(BaseHTTPRequestHandler):
             ]
             inf_client.write_points(points)
 
-
         self.send_response(200)
         self.end_headers()
         self.wfile.write(bytes('OK!', 'UTF-8'))
 
-
-    def log_request(code='', size=''):
+    def log_request(self=0, size=0, **kwargs):
         pass
+
 
 if __name__ == '__main__':
     server_class = HTTPServer
